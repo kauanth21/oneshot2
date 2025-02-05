@@ -8,12 +8,11 @@
 #define LED_PIN_GREEN 13
 #define BUTTON_PIN 5
 
-bool leds_active = false; // Indica se os LEDs estão ativos
+bool cycle_active = false; // Indica se o ciclo está rodando
+int led_state = 0; // Controla qual LED está sendo desligado
 
-// Função para desligar os LEDs um por um
-int64_t turn_off_led_callback(alarm_id_t id, void *user_data) {
-    static int led_state = 0;
-    
+// Callback do temporizador para desligar os LEDs um por um
+int64_t led_cycle_callback(alarm_id_t id, void *user_data) {
     switch (led_state) {
         case 0:
             gpio_put(LED_PIN_BLUE, 0);
@@ -26,42 +25,49 @@ int64_t turn_off_led_callback(alarm_id_t id, void *user_data) {
         case 2:
             gpio_put(LED_PIN_GREEN, 0);
             printf("LED Verde desligado\n");
-            leds_active = false; // Permite pressionar o botão novamente
+            cycle_active = false; // Desativa o ciclo, esperando nova ativação
+            printf("Todos os LEDs desligados. Pressione o botão para reiniciar o ciclo.\n");
             return 0;
     }
-    
+
     led_state++;
-    add_alarm_in_ms(3000, turn_off_led_callback, NULL, false);
+    add_alarm_in_ms(3000, led_cycle_callback, NULL, false); // Reprograma o temporizador
     return 0;
+}
+
+void start_led_cycle() {
+    printf("Iniciando ciclo dos LEDs!\n");
+    gpio_put(LED_PIN_BLUE, 1);
+    gpio_put(LED_PIN_RED, 1);
+    gpio_put(LED_PIN_GREEN, 1);
+    led_state = 0;
+    cycle_active = true;
+    
+    // Iniciar o primeiro desligamento após 3 segundos
+    add_alarm_in_ms(3000, led_cycle_callback, NULL, false);
 }
 
 int main() {
     stdio_init_all();
     sleep_ms(500);
     printf("Sistema iniciado!\n");
-    
+
     gpio_init(LED_PIN_BLUE);
     gpio_set_dir(LED_PIN_BLUE, GPIO_OUT);
     gpio_init(LED_PIN_RED);
     gpio_set_dir(LED_PIN_RED, GPIO_OUT);
     gpio_init(LED_PIN_GREEN);
     gpio_set_dir(LED_PIN_GREEN, GPIO_OUT);
-    
+
     gpio_init(BUTTON_PIN);
     gpio_set_dir(BUTTON_PIN, GPIO_IN);
     gpio_pull_up(BUTTON_PIN);
-    
+
     while (true) {
-        if (gpio_get(BUTTON_PIN) == 0 && !leds_active) {
+        if (gpio_get(BUTTON_PIN) == 0 && !cycle_active) {
             sleep_ms(50); // Debounce
             if (gpio_get(BUTTON_PIN) == 0) {
-                printf("Botão pressionado! Ligando LEDs...\n");
-                gpio_put(LED_PIN_BLUE, 1);
-                gpio_put(LED_PIN_RED, 1);
-                gpio_put(LED_PIN_GREEN, 1);
-                leds_active = true;
-                
-                add_alarm_in_ms(3000, turn_off_led_callback, NULL, false);
+                start_led_cycle(); // Inicia um novo ciclo quando o botão for pressionado
             }
         }
         sleep_ms(10);
